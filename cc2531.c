@@ -32,12 +32,11 @@ MODULE_LICENSE("GPL");
 #define CC2531_USB_PID 0x154f
 
 static const struct usb_device_id cc2531_device_table[] = {
-	{USB_DEVICE_AND_INTERFACE_INFO(
-		CC2531_USB_VID,
-		CC2531_USB_PID,
-		USB_CLASS_VENDOR_SPEC,
-		USB_SUBCLASS_VENDOR_SPEC,
-		0xff)},
+	{ USB_DEVICE_AND_INTERFACE_INFO(CC2531_USB_VID,
+	                                CC2531_USB_PID,
+	                                USB_CLASS_VENDOR_SPEC,
+	                                USB_SUBCLASS_VENDOR_SPEC,
+	                                0xff) },
 	{},
 };
 MODULE_DEVICE_TABLE(usb, cc2531_device_table);
@@ -46,16 +45,16 @@ MODULE_DEVICE_TABLE(usb, cc2531_device_table);
  * Custom control requests
  */
 enum cc2531_usb_request {
-	CC2531_USB_REQ_XDATA_READ   = 0,
-	CC2531_USB_REQ_XDATA_WRITE  = 1,
-	CC2531_USB_REQ_FIFO_READ    = 2,
-	CC2531_USB_REQ_FIFO_WRITE   = 3,
-	CC2531_USB_REQ_TX           = 4,
-	CC2531_USB_REQ_SET_CSMA     = 5,
+	CC2531_USB_REQ_XDATA_READ  = 0,
+	CC2531_USB_REQ_XDATA_WRITE = 1,
+	CC2531_USB_REQ_FIFO_READ   = 2,
+	CC2531_USB_REQ_FIFO_WRITE  = 3,
+	CC2531_USB_REQ_TX          = 4,
+	CC2531_USB_REQ_SET_CSMA    = 5,
 };
 enum cc2531_usb_request_type {
-	USB_RT_VENDOR_IN  = USB_DIR_IN  | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
-	USB_RT_VENDOR_OUT = USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
+	USB_RT_VENDOR_IN  = USB_TYPE_VENDOR | USB_RECIP_DEVICE | USB_DIR_IN,
+	USB_RT_VENDOR_OUT = USB_TYPE_VENDOR | USB_RECIP_DEVICE | USB_DIR_OUT,
 };
 
 /*
@@ -80,32 +79,29 @@ enum cc2531_cca_mode {
 	CC2531_CCA_MODE_RSSI_AND_RX = 3,
 };
 
-#define CC2531_RX_URB_COUNT  4
+#define CC2531_RX_URB_COUNT 4
 #define CC2531_INT_URB_COUNT 4
 #define CC2531_RX_SIZE 128
 
 struct cc2531 {
-	struct kref          kref;
-	struct delayed_work  resubmit_delayed;
-	struct work_struct   tx_work;
-	struct usb_anchor    idle_urbs,
-	                     submitted;
-	struct completion    status_received,
-	                     got_ack;
+	struct kref kref;
+	struct delayed_work resubmit_delayed;
+	struct work_struct tx_work;
+	struct usb_anchor idle_urbs, submitted;
+	struct completion status_received, got_ack;
 	struct ieee802154_hw *hw;
 	struct usb_interface *intf;
-	struct device        *dev;
-	struct usb_device    *usb;
-	struct sk_buff       *tx_skb;
-	spinlock_t           lock;
-	bool                 lbt;
-	unsigned             frame_retries;
-	atomic_t             tx_status,
-	                     expected_ack_seq;
+	struct device *dev;
+	struct usb_device *usb;
+	struct sk_buff *tx_skb;
+	spinlock_t lock;
+	bool lbt;
+	unsigned frame_retries;
+	atomic_t tx_status, expected_ack_seq;
 };
 
-#define CC2531_FREQCTRL_TO_CHANNEL(_v)   (11 + ((_v) - 11)/5)
-#define CC2531_CHANNEL_TO_FREQCTRL(_ch)  (11 + 5*((_ch) - 11))
+#define CC2531_FREQCTRL_TO_CHANNEL(_v) (11 + ((_v)-11) / 5)
+#define CC2531_CHANNEL_TO_FREQCTRL(_ch) (11 + 5 * ((_ch)-11))
 
 /*
  * Ref.: http://www.ti.com/lit/pdf/SWRS086 Table 1. Recommended Output Power
@@ -138,63 +134,66 @@ static const s32 cc2531_powers[] = {
  * The noise floor is around -95dBm though, so lower values make little sense.
  */
 static const s32 cc2531_ed_levels[] = {
-	-10000, -9900, -9800, -9700, -9600, -9500, -9400, -9300, -9200, -9100, -9000, -8900, -8800,
-	-8700,	-8600, -8500, -8400, -8300, -8200, -8100, -8000, -7900, -7800, -7700, -7600, -7500,
-	-7400,	-7300, -7200, -7100, -7000, -6900, -6800, -6700, -6600, -6500, -6400, -6300, -6200,
-	-6100,	-6000, -5900, -5800, -5700, -5600, -5500, -5400, -5300, -5200, -5100, -5000, -4900,
-	-4800,	-4700, -4600, -4500, -4400, -4300, -4200, -4100, -4000,
+	-10000, -9900, -9800, -9700, -9600, -9500, -9400, -9300, -9200,
+	-9100,	-9000, -8900, -8800, -8700, -8600, -8500, -8400, -8300,
+	-8200,	-8100, -8000, -7900, -7800, -7700, -7600, -7500, -7400,
+	-7300,	-7200, -7100, -7000, -6900, -6800, -6700, -6600, -6500,
+	-6400,	-6300, -6200, -6100, -6000, -5900, -5800, -5700, -5600,
+	-5500,	-5400, -5300, -5200, -5100, -5000, -4900, -4800, -4700,
+	-4600,	-4500, -4400, -4300, -4200, -4100, -4000,
 };
-#define CC2531_DBM_OFFSET	          -76
-#define CC2531_MBM_TO_HWLVL(_mbm)     ((_mbm) / 100 - CC2531_DBM_OFFSET)
-#define CC2531_HWLVL_TO_MBM(_hw_rssi) (100 * ((s8)(_hw_rssi) + CC2531_DBM_OFFSET))
+#define CC2531_DBM_OFFSET -76
+#define CC2531_MBM_TO_HWLVL(_mbm) ((_mbm) / 100 - CC2531_DBM_OFFSET)
+#define CC2531_HWLVL_TO_MBM(_hw_rssi) \
+	(100 * ((s8)(_hw_rssi) + CC2531_DBM_OFFSET))
 
 static void cc2531_set_hw_caps(struct ieee802154_hw *hw)
 {
-	hw->flags                = IEEE802154_HW_OMIT_CKSUM |
-	                           IEEE802154_HW_AFILT |
-	                           IEEE802154_HW_PROMISCUOUS |
-	                           IEEE802154_HW_FRAME_RETRIES |
-	                           IEEE802154_HW_CSMA_PARAMS;
+	hw->flags = IEEE802154_HW_OMIT_CKSUM |
+	            IEEE802154_HW_AFILT |
+	            IEEE802154_HW_PROMISCUOUS |
+	            IEEE802154_HW_FRAME_RETRIES |
+	            IEEE802154_HW_CSMA_PARAMS;
 
-	hw->phy->flags           = WPAN_PHY_FLAG_TXPOWER |
-	                           WPAN_PHY_FLAG_CCA_ED_LEVEL |
-	                           WPAN_PHY_FLAG_CCA_MODE;
+	hw->phy->flags = WPAN_PHY_FLAG_TXPOWER |
+	                 WPAN_PHY_FLAG_CCA_ED_LEVEL |
+	                 WPAN_PHY_FLAG_CCA_MODE;
 
 	hw->phy->symbol_duration = 16000;
 
 	hw->phy->supported = (struct wpan_phy_supported){
-		.iftypes             = BIT(NL802154_IFTYPE_NODE) |
-                               BIT(NL802154_IFTYPE_MONITOR) |
-                               BIT(NL802154_IFTYPE_COORD),
+		.iftypes = BIT(NL802154_IFTYPE_NODE) |
+		           BIT(NL802154_IFTYPE_MONITOR) |
+		           BIT(NL802154_IFTYPE_COORD),
 
-		.cca_modes           = BIT(NL802154_CCA_ENERGY) |
-                               BIT(NL802154_CCA_CARRIER) |
-                               BIT(NL802154_CCA_ENERGY_CARRIER) |
-                               BIT(NL802154_CCA_ALOHA),
+		.cca_modes = BIT(NL802154_CCA_ENERGY) |
+		             BIT(NL802154_CCA_CARRIER) |
+		             BIT(NL802154_CCA_ENERGY_CARRIER) |
+		             BIT(NL802154_CCA_ALOHA),
 
-		.cca_opts            = BIT(NL802154_CCA_OPT_ENERGY_CARRIER_AND),
+		.cca_opts = BIT(NL802154_CCA_OPT_ENERGY_CARRIER_AND),
 
-		.min_frame_retries   = 0,
-		.max_frame_retries   = 32,
+		.min_frame_retries = 0,
+		.max_frame_retries = 32,
 
-		.min_minbe           = 0,
-		.max_minbe           = 7,
+		.min_minbe = 0,
+		.max_minbe = 7,
 
-		.min_maxbe           = 0,
-		.max_maxbe           = 7,
+		.min_maxbe = 0,
+		.max_maxbe = 7,
 
-		.min_csma_backoffs   = 0,
-		.max_csma_backoffs   = 32,
+		.min_csma_backoffs = 0,
+		.max_csma_backoffs = 32,
 
-		.lbt                 = NL802154_SUPPORTED_BOOL_TRUE,
+		.lbt = NL802154_SUPPORTED_BOOL_TRUE,
 
-		.channels[0]         = GENMASK(CC2531_CHAN_MAX, CC2531_CHAN_MIN),
+		.channels[0] = GENMASK(CC2531_CHAN_MAX, CC2531_CHAN_MIN),
 
-		.tx_powers           = cc2531_powers,
-		.tx_powers_size      = ARRAY_SIZE(cc2531_powers),
+		.tx_powers = cc2531_powers,
+		.tx_powers_size = ARRAY_SIZE(cc2531_powers),
 
-		.cca_ed_levels       = cc2531_ed_levels,
-		.cca_ed_levels_size  = ARRAY_SIZE(cc2531_ed_levels),
+		.cca_ed_levels = cc2531_ed_levels,
+		.cca_ed_levels_size = ARRAY_SIZE(cc2531_ed_levels),
 	};
 }
 
@@ -207,7 +206,8 @@ static void cc2531_delete(struct kref *kref)
 	dev_dbg(dev, "%s", __func__);
 
 	while ((urb = usb_get_from_anchor(&cc->idle_urbs))) {
-		usb_free_coherent(cc->usb, urb->transfer_buffer_length, urb->transfer_buffer, urb->transfer_dma);
+		usb_free_coherent(cc->usb, urb->transfer_buffer_length,
+				  urb->transfer_buffer, urb->transfer_dma);
 		usb_put_urb(urb);
 
 		dev_dbg(dev, "freed urb %p", urb);
@@ -221,7 +221,9 @@ static void cc2531_delete(struct kref *kref)
 	dev_dbg(dev, "%s done", __func__);
 }
 
-static int cc2531_control_msg_recv(struct cc2531 *cc, enum cc2531_usb_request req, u16 value, u16 index, void *data, u16 size)
+static int cc2531_control_msg_recv(struct cc2531 *cc,
+				   enum cc2531_usb_request req, u16 value,
+				   u16 index, void *data, u16 size)
 {
 	int err;
 
@@ -231,7 +233,9 @@ static int cc2531_control_msg_recv(struct cc2531 *cc, enum cc2531_usb_request re
 		return err;
 	}
 
-	err = usb_control_msg_recv(cc->usb, 0, req, USB_RT_VENDOR_IN, value, index, data, size, USB_CTRL_GET_TIMEOUT, GFP_KERNEL);
+	err = usb_control_msg_recv(cc->usb, 0, req, USB_RT_VENDOR_IN, value,
+				   index, data, size, USB_CTRL_GET_TIMEOUT,
+				   GFP_KERNEL);
 	if (err)
 		dev_err(cc->dev, "usb_control_msg_recv error %d", err);
 
@@ -240,7 +244,9 @@ static int cc2531_control_msg_recv(struct cc2531 *cc, enum cc2531_usb_request re
 	return err;
 }
 
-static int cc2531_control_msg_send(struct cc2531 *cc, enum cc2531_usb_request req, u16 value, u16 index, const void *data, u16 size)
+static int cc2531_control_msg_send(struct cc2531 *cc,
+				   enum cc2531_usb_request req, u16 value,
+				   u16 index, const void *data, u16 size)
 {
 	int err;
 
@@ -250,7 +256,9 @@ static int cc2531_control_msg_send(struct cc2531 *cc, enum cc2531_usb_request re
 		return err;
 	}
 
-	err = usb_control_msg_send(cc->usb, 0, req, USB_RT_VENDOR_OUT, value, index, data, size, USB_CTRL_GET_TIMEOUT, GFP_KERNEL);
+	err = usb_control_msg_send(cc->usb, 0, req, USB_RT_VENDOR_OUT, value,
+				   index, data, size, USB_CTRL_GET_TIMEOUT,
+				   GFP_KERNEL);
 	if (err)
 		dev_err(cc->dev, "usb_control_msg_send error %d", err);
 
@@ -259,12 +267,15 @@ static int cc2531_control_msg_send(struct cc2531 *cc, enum cc2531_usb_request re
 	return err;
 }
 
-inline int cc2531_write(struct cc2531 *cc, enum cc2531_reg_addr addr, const void *data, u16 size)
+inline int cc2531_write(struct cc2531 *cc, enum cc2531_reg_addr addr,
+			const void *data, u16 size)
 {
-	return cc2531_control_msg_send(cc, CC2531_USB_REQ_XDATA_WRITE, addr, 0, data, size);
+	return cc2531_control_msg_send(cc, CC2531_USB_REQ_XDATA_WRITE, addr, 0,
+				       data, size);
 }
 
-inline int cc2531_write_byte(struct cc2531 *cc, enum cc2531_reg_addr addr, u8 byte)
+inline int cc2531_write_byte(struct cc2531 *cc, enum cc2531_reg_addr addr,
+			     u8 byte)
 {
 	return cc2531_write(cc, addr, &byte, 1);
 }
@@ -275,18 +286,21 @@ inline int csp_imm_strobe(struct cc2531 *cc, enum csp_cmd_strobe strobe)
 	return cc2531_write_byte(cc, CC2531_REG_RFST_ADDR, imm_strobe);
 }
 
-inline int cc2531_read(struct cc2531 *cc, enum cc2531_reg_addr addr, void *data, u16 size)
+inline int cc2531_read(struct cc2531 *cc, enum cc2531_reg_addr addr, void *data,
+		       u16 size)
 {
-	return cc2531_control_msg_recv(cc, CC2531_USB_REQ_XDATA_READ, addr, 0, data, size);
+	return cc2531_control_msg_recv(cc, CC2531_USB_REQ_XDATA_READ, addr, 0,
+				       data, size);
 }
 
-inline int cc2531_read_byte(struct cc2531 *cc, enum cc2531_reg_addr addr, u8 *byte)
+inline int cc2531_read_byte(struct cc2531 *cc, enum cc2531_reg_addr addr,
+			    u8 *byte)
 {
 	return cc2531_read(cc, addr, byte, 1);
 }
 
-static int cc2531_write_reg_bits(struct cc2531 *cc, enum cc2531_reg_addr addr, u8 msb, u8 lsb,
-				 u8 val)
+static int cc2531_write_reg_bits(struct cc2531 *cc, enum cc2531_reg_addr addr,
+				 u8 msb, u8 lsb, u8 val)
 {
 	int err;
 	u8 mask = GENMASK(msb, lsb);
@@ -308,11 +322,13 @@ static int cc2531_write_reg_bits(struct cc2531 *cc, enum cc2531_reg_addr addr, u
 	return cc2531_write_byte(cc, addr, tmp);
 }
 
-#define regbits_write(_dev, _name, _var)                                           \
-	cc2531_write_reg_bits(_dev, CC2531_REG_ADDR(_name), CC2531_REG_MSB(_name), \
-			      CC2531_REG_LSB(_name), _var)
+#define regbits_write(_dev, _name, _var)                                    \
+	cc2531_write_reg_bits(_dev, CC2531_REG_ADDR(_name),                 \
+			      CC2531_REG_MSB(_name), CC2531_REG_LSB(_name), \
+			      _var)
 
-static int cc2531_read_reg_bits(struct cc2531 *cc, unsigned int addr, u8 msb, u8 lsb, u8 *val)
+static int cc2531_read_reg_bits(struct cc2531 *cc, unsigned int addr, u8 msb,
+				u8 lsb, u8 *val)
 {
 	int err;
 	err = cc2531_read_byte(cc, addr, val);
@@ -323,9 +339,10 @@ static int cc2531_read_reg_bits(struct cc2531 *cc, unsigned int addr, u8 msb, u8
 	return err;
 }
 
-#define regbits_read(_dev, _name, _var)                                           \
-	cc2531_read_reg_bits(_dev, CC2531_REG_ADDR(_name), CC2531_REG_MSB(_name), \
-			     CC2531_REG_LSB(_name), _var)
+#define regbits_read(_dev, _name, _var)                                    \
+	cc2531_read_reg_bits(_dev, CC2531_REG_ADDR(_name),                 \
+			     CC2531_REG_MSB(_name), CC2531_REG_LSB(_name), \
+			     _var)
 
 static int cc2531_send_pkt(struct cc2531 *cc, void *data, unsigned len)
 {
@@ -333,7 +350,8 @@ static int cc2531_send_pkt(struct cc2531 *cc, void *data, unsigned len)
 
 	dev_dbg(cc->dev, "sending pkt\n");
 
-	return cc2531_control_msg_send(cc, CC2531_USB_REQ_TX, mode, 0, data, len);
+	return cc2531_control_msg_send(cc, CC2531_USB_REQ_TX, mode, 0, data,
+				       len);
 }
 
 static u8 cc2531_mfr_to_lqi(u8 *mfr)
@@ -376,7 +394,8 @@ static void cc2531_pkt_received(struct cc2531 *cc, u8 *data, u32 len)
 	dev_dbg(cc->dev, "pkt_received %p %u", data, len);
 
 	if (!ieee802154_is_valid_psdu_len(len)) {
-		dev_warn(cc->dev, "Received pkt with invalid length: %u\n", len);
+		dev_warn(cc->dev, "Received pkt with invalid length: %u\n",
+			 len);
 		goto drop_pkt;
 	}
 
@@ -415,7 +434,8 @@ static void cc2531_pkt_received(struct cc2531 *cc, u8 *data, u32 len)
 	return;
 
 drop_pkt:
-	print_hex_dump(KERN_DEBUG, "pkt: ", DUMP_PREFIX_NONE, 16, 1, data, len, false);
+	print_hex_dump(KERN_DEBUG, "pkt: ", DUMP_PREFIX_NONE, 16, 1, data, len,
+		       false);
 }
 
 static void cc2531_int_received(struct cc2531 *cc, u8 status)
@@ -436,7 +456,7 @@ static int cc2531_transmit_once(struct cc2531 *cc, struct sk_buff *skb)
 	const unsigned long timeout = msecs_to_jiffies(5000);
 	int err;
 	int status;
-	
+
 	WARN_ON(swq_has_sleeper(&cc->status_received.wait));
 
 	reinit_completion(&cc->status_received);
@@ -471,7 +491,6 @@ static int cc2531_transmit_with_retries(struct cc2531 *cc, struct sk_buff *skb)
 
 	dev_dbg(cc->dev, "sending with ackreq. seq: %u", seq);
 
-
 	spin_lock_irqsave(&cc->lock, flags);
 	atomic_set(&cc->expected_ack_seq, seq);
 	spin_unlock_irqrestore(&cc->lock, flags);
@@ -485,9 +504,10 @@ static int cc2531_transmit_with_retries(struct cc2531 *cc, struct sk_buff *skb)
 
 		if (status < 0)
 			goto end;
-		
+
 		if (status > 0) {
-			dev_dbg(cc->dev, "waiting for ack: got tx status: %d", status);
+			dev_dbg(cc->dev, "waiting for ack: got tx status: %d",
+				status);
 			continue;
 		}
 
@@ -522,7 +542,6 @@ static void cc2531_do_tx_work(struct work_struct *work)
 	struct sk_buff *skb;
 	unsigned long flags;
 	__le16 fc;
-
 
 	spin_lock_irqsave(&cc->lock, flags);
 	skb = READ_ONCE(cc->tx_skb);
@@ -582,25 +601,29 @@ static int cc2531_ed(struct ieee802154_hw *hw, u8 *level)
 	return cc2531_read(cc, CC2531_REG_RSSI_ADDR, level, sizeof(*level));
 }
 
-static int cc2531_set_hw_addr_filt(struct ieee802154_hw *hw, struct ieee802154_hw_addr_filt *filt,
+static int cc2531_set_hw_addr_filt(struct ieee802154_hw *hw,
+				   struct ieee802154_hw_addr_filt *filt,
 				   unsigned long changed)
 {
 	struct cc2531 *cc = hw->priv;
 	int err;
 
 	if (changed & IEEE802154_AFILT_SADDR_CHANGED) {
-		dev_dbg(cc->dev, "hw filter: Address: %#06x\n", le16_to_cpu(filt->short_addr));
+		dev_dbg(cc->dev, "hw filter: Address: %#06x\n",
+			le16_to_cpu(filt->short_addr));
 
-		err = cc2531_write(cc, CC2531_REG_SHORT_ADDR_ADDR, &filt->short_addr,
-				   sizeof(filt->short_addr));
+		err = cc2531_write(cc, CC2531_REG_SHORT_ADDR_ADDR,
+				   &filt->short_addr, sizeof(filt->short_addr));
 		if (err)
 			return err;
 	}
 
 	if (changed & IEEE802154_AFILT_PANID_CHANGED) {
-		dev_dbg(cc->dev, "hw filter: PAN: %#06x\n", le16_to_cpu(filt->pan_id));
+		dev_dbg(cc->dev, "hw filter: PAN: %#06x\n",
+			le16_to_cpu(filt->pan_id));
 
-		err = cc2531_write(cc, CC2531_REG_PAN_ID_ADDR, &filt->pan_id, sizeof(filt->pan_id));
+		err = cc2531_write(cc, CC2531_REG_PAN_ID_ADDR, &filt->pan_id,
+				   sizeof(filt->pan_id));
 		if (err)
 			return err;
 	}
@@ -609,14 +632,15 @@ static int cc2531_set_hw_addr_filt(struct ieee802154_hw *hw, struct ieee802154_h
 		dev_dbg(cc->dev, "hw filter: Extended address: %016llx\n",
 			le64_to_cpu(filt->ieee_addr));
 
-		err = cc2531_write(cc, CC2531_REG_EXT_ADD_ADDR, &filt->ieee_addr,
-				   sizeof(filt->ieee_addr));
+		err = cc2531_write(cc, CC2531_REG_EXT_ADD_ADDR,
+				   &filt->ieee_addr, sizeof(filt->ieee_addr));
 		if (err)
 			return err;
 	}
 
 	if (changed & IEEE802154_AFILT_PANC_CHANGED) {
-		dev_dbg(cc->dev, "hw filter: Is PAN coordinator: %d\n", filt->pan_coord);
+		dev_dbg(cc->dev, "hw filter: Is PAN coordinator: %d\n",
+			filt->pan_coord);
 
 		err = regbits_write(cc, PAN_COORDINATOR, filt->pan_coord);
 		if (err)
@@ -634,14 +658,16 @@ static int cc2531_set_txpower(struct ieee802154_hw *hw, s32 mbm)
 		if (cc2531_powers[i] == mbm) {
 			u8 reg_value = (i << 4) | 0x05;
 			dev_dbg(cc->dev, "setting tx power: %d mBm\n", mbm);
-			return cc2531_write_byte(cc, CC2531_REG_TXPOWER_ADDR, reg_value);
+			return cc2531_write_byte(cc, CC2531_REG_TXPOWER_ADDR,
+						 reg_value);
 		}
 	}
 
 	return -EINVAL;
 }
 
-static int cc2531_set_cca_mode(struct ieee802154_hw *hw, const struct wpan_phy_cca *cca)
+static int cc2531_set_cca_mode(struct ieee802154_hw *hw,
+			       const struct wpan_phy_cca *cca)
 {
 	struct cc2531 *cc = hw->priv;
 	u8 mode;
@@ -735,14 +761,17 @@ static int cc2531_set_frame_retries(struct ieee802154_hw *hw, const s8 retries)
 	return 0;
 }
 
-static int cc2531_set_csma_params(struct ieee802154_hw *hw, u8 min_be, u8 max_be, u8 retries)
+static int cc2531_set_csma_params(struct ieee802154_hw *hw, u8 min_be,
+				  u8 max_be, u8 retries)
 {
 	struct cc2531 *cc = hw->priv;
-	u16 packed_csma_settings = (retries<<8) | (max_be << 4) | min_be;
+	u16 packed_csma_settings = (retries << 8) | (max_be << 4) | min_be;
 
-	dev_dbg(cc->dev, "CSMA params: min_be: %u max_be: %u be_retries: %u", min_be, max_be, retries);
+	dev_dbg(cc->dev, "CSMA params: min_be: %u max_be: %u be_retries: %u",
+		min_be, max_be, retries);
 
-	return cc2531_control_msg_send(cc, CC2531_USB_REQ_SET_CSMA, packed_csma_settings, 0, NULL, 0);
+	return cc2531_control_msg_send(cc, CC2531_USB_REQ_SET_CSMA,
+				       packed_csma_settings, 0, NULL, 0);
 }
 
 static int cc2531_start(struct ieee802154_hw *hw)
@@ -779,33 +808,34 @@ static void cc2531_stop(struct ieee802154_hw *hw)
 }
 
 static const struct ieee802154_ops cc2531_ieee802154_ops = {
-	.owner                = THIS_MODULE,
-	.xmit_async           = cc2531_xmit,
-	.ed                   = cc2531_ed,
-	.set_channel          = cc2531_set_channel,
-	.start                = cc2531_start,
-	.stop                 = cc2531_stop,
-	.set_hw_addr_filt     = cc2531_set_hw_addr_filt,
-	.set_txpower          = cc2531_set_txpower,
-	.set_lbt              = cc2531_set_lbt,
-	.set_cca_mode         = cc2531_set_cca_mode,
-	.set_cca_ed_level     = cc2531_set_cca_ed_level,
+	.owner = THIS_MODULE,
+	.xmit_async = cc2531_xmit,
+	.ed = cc2531_ed,
+	.set_channel = cc2531_set_channel,
+	.start = cc2531_start,
+	.stop = cc2531_stop,
+	.set_hw_addr_filt = cc2531_set_hw_addr_filt,
+	.set_txpower = cc2531_set_txpower,
+	.set_lbt = cc2531_set_lbt,
+	.set_cca_mode = cc2531_set_cca_mode,
+	.set_cca_ed_level = cc2531_set_cca_ed_level,
 	.set_promiscuous_mode = cc2531_set_promiscuous_mode,
-	.set_frame_retries    = cc2531_set_frame_retries,
-	.set_csma_params      = cc2531_set_csma_params,
+	.set_frame_retries = cc2531_set_frame_retries,
+	.set_csma_params = cc2531_set_csma_params,
 };
-
 
 static int cc2531_read_perm_extaddr(struct cc2531 *cc)
 {
 	int err;
 	__le64 *addr = &cc->hw->phy->perm_extended_addr;
 
-	err = cc2531_read(cc, CC2531_REG_IEEE_PERM_ADDR_ADDR, addr, sizeof(*addr));
+	err = cc2531_read(cc, CC2531_REG_IEEE_PERM_ADDR_ADDR, addr,
+			  sizeof(*addr));
 	if (err)
 		return err;
 
-	dev_info(cc->dev, "read permanent extended address: %016llx", le64_to_cpu(*addr));
+	dev_info(cc->dev, "read permanent extended address: %016llx",
+		 le64_to_cpu(*addr));
 
 	return err;
 }
@@ -813,7 +843,8 @@ static int cc2531_read_perm_extaddr(struct cc2531 *cc)
 static int cc2531_read_version_str(struct cc2531 *cc)
 {
 	char version_str[256] = { 0 };
-	int len = usb_string(cc->usb, CC2531_STRING_DESC_VERSION, version_str, sizeof(version_str));
+	int len = usb_string(cc->usb, CC2531_STRING_DESC_VERSION, version_str,
+			     sizeof(version_str));
 	if (len < 0)
 		return len;
 	dev_info(cc->dev, "CC2531 firmware version: %s", version_str);
@@ -918,7 +949,8 @@ static void cc2531_urb_done(struct urb *urb)
 	case 0:
 		switch (usb_endpoint_type(&urb->ep->desc)) {
 		case USB_ENDPOINT_XFER_BULK:
-			cc2531_pkt_received(cc, urb->transfer_buffer, urb->actual_length);
+			cc2531_pkt_received(cc, urb->transfer_buffer,
+					    urb->actual_length);
 			break;
 		case USB_ENDPOINT_XFER_INT:
 			cc2531_int_received(cc, *(u8 *)urb->transfer_buffer);
@@ -939,7 +971,9 @@ static void cc2531_urb_done(struct urb *urb)
 	cc2531_resubmit_urb(cc, urb, GFP_ATOMIC);
 }
 
-static int cc2531_create_idle_in_urb(struct cc2531 *cc, struct usb_endpoint_descriptor *ep, unsigned bufsize)
+static int cc2531_create_idle_in_urb(struct cc2531 *cc,
+				     struct usb_endpoint_descriptor *ep,
+				     unsigned bufsize)
 {
 	unsigned pipe;
 	struct urb *urb;
@@ -949,7 +983,8 @@ static int cc2531_create_idle_in_urb(struct cc2531 *cc, struct usb_endpoint_desc
 	if (!urb)
 		return -ENOMEM;
 
-	buf = usb_alloc_coherent(cc->usb, bufsize, GFP_KERNEL, &urb->transfer_dma);
+	buf = usb_alloc_coherent(cc->usb, bufsize, GFP_KERNEL,
+				 &urb->transfer_dma);
 	if (!buf) {
 		usb_free_urb(urb);
 		return -ENOMEM;
@@ -958,11 +993,13 @@ static int cc2531_create_idle_in_urb(struct cc2531 *cc, struct usb_endpoint_desc
 	switch (usb_endpoint_type(ep)) {
 	case USB_ENDPOINT_XFER_BULK:
 		pipe = usb_rcvbulkpipe(cc->usb, ep->bEndpointAddress);
-		usb_fill_bulk_urb(urb, cc->usb, pipe, buf, bufsize, cc2531_urb_done, cc);
+		usb_fill_bulk_urb(urb, cc->usb, pipe, buf, bufsize,
+				  cc2531_urb_done, cc);
 		break;
 	case USB_ENDPOINT_XFER_INT:
-	 	pipe = usb_rcvintpipe(cc->usb, ep->bEndpointAddress);
-		usb_fill_int_urb(urb, cc->usb, pipe, buf, bufsize, cc2531_urb_done, cc, ep->bInterval);
+		pipe = usb_rcvintpipe(cc->usb, ep->bEndpointAddress);
+		usb_fill_int_urb(urb, cc->usb, pipe, buf, bufsize,
+				 cc2531_urb_done, cc, ep->bInterval);
 		break;
 	}
 
@@ -972,7 +1009,8 @@ static int cc2531_create_idle_in_urb(struct cc2531 *cc, struct usb_endpoint_desc
 	return 0;
 }
 
-static int cc2531_probe(struct usb_interface *intf, const struct usb_device_id *id)
+static int cc2531_probe(struct usb_interface *intf,
+			const struct usb_device_id *id)
 {
 	struct ieee802154_hw *hw;
 	struct cc2531 *cc;
@@ -1002,9 +1040,11 @@ static int cc2531_probe(struct usb_interface *intf, const struct usb_device_id *
 	init_usb_anchor(&cc->idle_urbs);
 	init_usb_anchor(&cc->submitted);
 
-	err = usb_find_common_endpoints(intf->cur_altsetting, &recv_ep, NULL, &intr_ep, NULL);
+	err = usb_find_common_endpoints(intf->cur_altsetting, &recv_ep, NULL,
+					&intr_ep, NULL);
 	if (err) {
-		dev_err(cc->dev, "Failed to find required bulk in and intr in endpoints");
+		dev_err(cc->dev,
+			"Failed to find required bulk in and intr in endpoints");
 		goto error;
 	}
 
@@ -1017,7 +1057,8 @@ static int cc2531_probe(struct usb_interface *intf, const struct usb_device_id *
 	}
 
 	for (int i = 0; i < CC2531_INT_URB_COUNT; i++) {
-		err = cc2531_create_idle_in_urb(cc, intr_ep, intr_ep->wMaxPacketSize);
+		err = cc2531_create_idle_in_urb(cc, intr_ep,
+						intr_ep->wMaxPacketSize);
 		if (err) {
 			dev_err(cc->dev, "Could not create INT URB");
 			goto error;
@@ -1086,7 +1127,8 @@ struct reg_attr {
 	int lsb;
 };
 
-static ssize_t cc2531_show_attr(struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t cc2531_show_attr(struct device *dev,
+				struct device_attribute *attr, char *buf)
 {
 	struct reg_attr *reg_attr = container_of(attr, struct reg_attr, attr);
 	struct cc2531 *cc = dev_get_drvdata(dev);
@@ -1095,7 +1137,8 @@ static ssize_t cc2531_show_attr(struct device *dev, struct device_attribute *att
 
 	if (nbits < 8) {
 		u8 value;
-		err = cc2531_read_reg_bits(cc, reg_attr->reg, reg_attr->msb, reg_attr->lsb, &value);
+		err = cc2531_read_reg_bits(cc, reg_attr->reg, reg_attr->msb,
+					   reg_attr->lsb, &value);
 		if (err)
 			return err;
 		return sysfs_emit(buf, "%#x\n", value);
@@ -1119,7 +1162,8 @@ static ssize_t cc2531_show_attr(struct device *dev, struct device_attribute *att
 	}
 }
 
-static ssize_t cc2531_store_attr(struct device *dev, struct device_attribute *attr, const char *buf,
+static ssize_t cc2531_store_attr(struct device *dev,
+				 struct device_attribute *attr, const char *buf,
 				 size_t count)
 {
 	struct reg_attr *reg_attr = container_of(attr, struct reg_attr, attr);
@@ -1136,7 +1180,8 @@ static ssize_t cc2531_store_attr(struct device *dev, struct device_attribute *at
 		return -EINVAL;
 
 	if (nbits < 8)
-		err = cc2531_write_reg_bits(cc, reg_attr->reg, reg_attr->msb, reg_attr->lsb, val);
+		err = cc2531_write_reg_bits(cc, reg_attr->reg, reg_attr->msb,
+					    reg_attr->lsb, val);
 	else
 		err = cc2531_write(cc, reg_attr->reg, &val, nbits / 8);
 
@@ -1146,12 +1191,13 @@ static ssize_t cc2531_store_attr(struct device *dev, struct device_attribute *at
 	return count;
 }
 
-#define DEFINE_REG_ATTR(_addr, _lsb, _msb, _name)                         \
-	static struct reg_attr _name##_attr = {                               \
-		.attr = __ATTR(_name, 0600, cc2531_show_attr, cc2531_store_attr), \
-		.reg  = _addr,                                                    \
-		.msb  = _msb,                                                     \
-		.lsb  = _lsb,                                                     \
+#define DEFINE_REG_ATTR(_addr, _lsb, _msb, _name)             \
+	static struct reg_attr _name##_attr = {               \
+		.attr = __ATTR(_name, 0600, cc2531_show_attr, \
+			       cc2531_store_attr),            \
+		.reg = _addr,                                 \
+		.msb = _msb,                                  \
+		.lsb = _lsb,                                  \
 	};
 
 FOR_EACH_CC2531_REG(DEFINE_REG_ATTR)
@@ -1159,8 +1205,7 @@ FOR_EACH_CC2531_REG(DEFINE_REG_ATTR)
 #define LIST_REG_ATTR(_addr, _lowbit, _highbit, _name) &_name##_attr.attr.attr,
 
 static struct attribute *cc2531_attrs[] = {
-	FOR_EACH_CC2531_REG(LIST_REG_ATTR)
-	NULL,
+	FOR_EACH_CC2531_REG(LIST_REG_ATTR) NULL,
 };
 
 static const struct attribute_group cc2531_group = {
