@@ -1,7 +1,7 @@
 # Linux kernel driver for CC2531 WPAN Adapter firmware
 
 ## Requirements
-- CC2531 based USB dongle with [WPAN Firmware](https://github.com/rosvall/cc2531_wpan_adapter/)
+- CC2531 based USB dongle with [WPAN Firmware](https://github.com/rosvall/cc2531_usb_wpan_adapter)
 - Linux 6.0 or newer
 - GCC, binutils, kernel headers, etc.
 
