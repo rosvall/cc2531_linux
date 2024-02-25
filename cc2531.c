@@ -957,6 +957,10 @@ static void cc2531_urb_done(struct urb *urb)
 			break;
 		}
 		break;
+
+	case -EPIPE:
+		dev_err(cc->dev, "Pipe broken for endpoint: %x\n", urb->ep->desc.bEndpointAddress);
+		fallthrough;
 	case -ENOENT:
 	case -ECONNRESET:
 	case -ESHUTDOWN:
