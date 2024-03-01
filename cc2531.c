@@ -394,14 +394,14 @@ static void cc2531_pkt_received(struct cc2531 *cc, u8 *data, u32 len)
 	dev_dbg(cc->dev, "pkt_received %p %u", data, len);
 
 	if (!ieee802154_is_valid_psdu_len(len)) {
-		dev_warn(cc->dev, "Received pkt with invalid length: %u\n",
+		dev_dbg(cc->dev, "Received pkt with invalid length: %u\n",
 			 len);
 		goto drop_pkt;
 	}
 
 	lqi = cc2531_mfr_to_lqi(mac_footer);
 	if (!lqi) {
-		dev_warn(cc->dev, "Received pkt with invalid crc\n");
+		dev_dbg(cc->dev, "Received pkt with invalid crc\n");
 		goto drop_pkt;
 	}
 
@@ -434,8 +434,7 @@ static void cc2531_pkt_received(struct cc2531 *cc, u8 *data, u32 len)
 	return;
 
 drop_pkt:
-	print_hex_dump(KERN_DEBUG, "pkt: ", DUMP_PREFIX_NONE, 16, 1, data, len,
-		       false);
+	print_hex_dump_bytes("pkt: ", DUMP_PREFIX_NONE, data, len);
 }
 
 static void cc2531_int_received(struct cc2531 *cc, u8 status)
@@ -523,7 +522,7 @@ static int cc2531_transmit_with_retries(struct cc2531 *cc, struct sk_buff *skb)
 
 	} while (remaining_frame_retries--);
 
-	dev_info(cc->dev, "Unacked: seq no %u", seq);
+	dev_dbg(cc->dev, "Unacked: seq no %u", seq);
 	if (!status)
 		status = IEEE802154_NO_ACK;
 
