@@ -986,6 +986,8 @@ static int cc2531_create_idle_in_urb(struct cc2531 *cc,
 	if (!urb)
 		return -ENOMEM;
 
+	urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
+
 	buf = usb_alloc_coherent(cc->usb, bufsize, GFP_KERNEL,
 				 &urb->transfer_dma);
 	if (!buf) {
