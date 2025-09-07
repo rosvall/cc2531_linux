@@ -1,3 +1,9 @@
+> [!NOTE]
+> Moved to [codeberg.org/rosvall/cc2531_linux](https://codeberg.org/rosvall/cc2531_linux)
+>
+> For reasons given [here](https://github.com/rosvall/goodbye-github)
+
+
 # Linux kernel driver for CC2531 WPAN Adapter
 IEEE 802.15.4 Linux driver for [CC2531 based USB dongle](https://www.ti.com/tool/CC2531USB-RD) with [WPAN Firmware](https://github.com/rosvall/cc2531_usb_wpan_adapter).
 
